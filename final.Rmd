@@ -1,0 +1,549 @@
+---
+author: "Dominick Cifelli"
+title: "Long-Term Trends in CO2 Concentrations & Carbon Isotope Composition"
+date: "May 3, 2023"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    default_style: "dark"
+    downcute_theme: "chaos"
+---
+
+
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+```{r packages, warning=FALSE, echo=TRUE, include=TRUE, comment="", collapse=TRUE}
+
+library(isocalcR)
+library(tidyr)
+library(dplyr)
+library(cowplot)
+library(ggplot2)
+library(ggthemes)
+library(gt)
+library(Metrics)
+library(car)
+
+```
+
+## Introduction
+
+The Earth's climate is affected by the rampant release of greenhouse gases, especially carbon dioxide (CO2), into the atmosphere. This surge in CO2 levels carries profound consequences for the world's ecosystems and poses formidable challenges for maintaining resources sustainably and conserving our environment. Grasping the shifts in atmospheric CO2 concentrations (Ca) and its isotopic composition (δ13C) across time is pivotal for gauging the scale and implications of human-triggered climate alterations. Over the last century, the combustion of fossil fuels, deforestation, and other human endeavors have driven a substantial uptick in atmospheric CO2 levels. The industrial revolution marked the genesis of a staggering CO2 rise, an ascent that has gained pace in recent decades. The current CO2 concentration eclipses pre-industrial levels by approximately 50%, soaring to around 420 parts per million (ppm). This unparalleled surge in CO2 holds momentous implications for the Earth's climate system and the functioning of terrestrial carbon absorption.
+
+Carbon isotopes unveil precious insights into the mechanisms propelling changes in atmospheric CO2 concentrations. Carbon exists in two stable forms, 12C and 13C, differing in their neutron count. The proportion of these isotopes in atmospheric CO2 (δ13C.atm) is influenced by myriad factors, encompassing fossil fuel emissions, the dynamics of the carbon cycle, and the way plants respond to shifting CO2 levels. Unveiling the temporal patterns in δ13C.atm is crucial for disentangling the contributions from different CO2 sources and sinks, and for evaluating the repercussions of human activities on global carbon circulation. Beyond being a tracer of atmospheric CO2, δ13C composition furnishes crucial insights into the internal processes of plants. During photosynthesis, plants favor the lighter isotope, 12C, resulting in reduced δ13C values as atmospheric CO2 levels climb. Variations in δ13C composition in plant tissues, like wood, can mirror changes in carbon assimilation paths, water efficiency, and nutrient availability. Consequently, delving into the nexus between δ13C values of woody organic matter and environmental elements can unveil plant adaptations to shifting CO2 levels and climatic shifts. Despite the growing reservoir of research on atmospheric CO2 levels and carbon isotope composition, there persists a need for all-encompassing inquiries that synthesize long-term data and employ advanced statistical models. Such investigations can offer a more nuanced understanding of the temporal dynamics and ramifications of these variables. Hence, the ambition of this study is to scrutinize the temporal trends in atmospheric CO2 concentrations and carbon isotope composition over the last 80 years, leveraging data from Belmecheri and Lavergne (2020) and the isocalcR toolkit developed by Mathias and Hudiburg. Furthermore, I aspire to probe the interplay between δ13C composition of woody organic matter and environmental components, such as water-use efficiency and climatic parameters.
+
+The isocalcR toolkit bridges the gap for standardized tools to analyze stable isotope data from wood and leaf organic matter. Equipped with an array of functions and recommended reference data, isocalcR facilitates the computation of common isotope-based physiological indices. It calculates indices like leaf carbon isotope discrimination, the intercellular-to-atmospheric CO2 ratio, and intrinsic water use efficiency—each fraction corresponding to key phenological processes such as carbon assimilation (iWUE Mesophyll) and light-dependent processes (iWUE Photorespiration). Additionally, isocalcR incorporates endorsed atmospheric CO2 and δ13CO2 data, assuring precision and currentness in calculations.
+
+Therefore, my aim is to compute fractions of water use efficiency using the formulas outlined in Mathias & Hudiburg, subsequently comparing each rendition of WUE. I will also identify trends in atmospheric CO2 concentrations, δ13CO2 composition of woody organic matter, and intrinsic water use efficiency. Subsequently, I will explore the interrelation between δ13CO2 composition of woody organic matter and environmental factors like mean growth temperature (MGT_C) and elevation (Elevation_m). Overall, my endeavor is to unveil trends and correlations across various environmental factors and plant physiology. To accomplish this, i will use the following packages:
+
+|`Package`  | `Description`                                                                                                    |
+|-------------------- |----------------------------------------------------------------------------------------------------------------|
+|`isocalcR`   | isocalcR	Provides functions for calculating isotopic distributions and mass-to-charge ratios for chemical compounds  |
+|`dplyr`      | Package for data manipulation in R, providing a concise and intuitive syntax for filtering, transforming, and summarizing data  |
+|`ggplot2`    | Data visualization tool that allows users to create complex and customized plots with ease  |
+|`ggthemes`   | Extends the functionality of ggplot2 by providing additional themes and scales for creating visually appealing and professional-looking plots |
+|`cowplot`    | Facilitates the creation of complex and publication-ready plots by allowing users to arrange multiple plots into grids and customize their appearance  |
+|`gt`         | Tool for creating elegant and customizable tables from data frames or other tabular data sources, offering a range of formatting options and support for various output formats |
+|`Metrics`    | Provides a collection of commonly used evaluation metrics for machine learning and statistical models, allowing users to assess the performance and accuracy of models  |
+|`car`        | Offers a wide range of functions for regression modeling and diagnostic testing, including tools for assessing model assumptions, conducting hypothesis tests, and performing regression diagnostics|
+
+## Methods
+
+### Data Exploration & Manipulation
+
+First I read in the data and explore summary statistics
+
+```{r a, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+data("CO2data")
+data("piru13C")
+summary(CO2data)
+summary(piru13C)
+
+```
+
+CO2data: yr = Years (0-2022), Ca = Atmospheric CO2 concentration (ppm), d13C.atm = Atmospheric carbion isotoppe (δ13C) ratio
+
+Here I merge the piru13C and CO2data datasets based on the “Year” variable in piru13C and the “yr” variable in CO2data. The all = TRUE argument ensures that all observations from both datasets are included in the merged dataset.
+
+```{r b, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+combined_data <- merge(piru13C, CO2data, by.x = "Year", by.y = "yr", all = TRUE)
+
+
+```
+
+This creates a new varaible in our dataset that contrains converted wood δ13C composition to d13C values
+
+```{r c, include=TRUE, warning=FALSE, echo=TRUE}
+
+combined_data$d13C_wood <- combined_data$wood.d13C / 1000
+
+```
+
+
+Now I can calculate water use effeciency fractions using the formulas detailed in Mathias & Hudiburg
+
+```{r d, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+combined_data$iWUE_simple <- mapply(d13C.to.iWUE,
+                                    d13C.plant = combined_data$wood.d13C,
+                                    year = combined_data$Year,
+                                    elevation = combined_data$Elevation_m,
+                                    temp = combined_data$MGT_C,
+                                    method = "simple",
+                                    tissue = "wood")
+
+combined_data$iWUE_photorespiration <- mapply(d13C.to.iWUE,
+                                              d13C.plant = combined_data$wood.d13C,
+                                              year = combined_data$Year,
+                                              elevation = combined_data$Elevation_m,
+                                              temp = combined_data$MGT_C,
+                                              method = "photorespiration",
+                                              frac = combined_data$frac)
+
+combined_data$iWUE_mesophyll <- mapply(d13C.to.iWUE,
+                                       d13C.plant = combined_data$wood.d13C,
+                                       year = combined_data$Year,
+                                       elevation = combined_data$Elevation_m,
+                                       temp = combined_data$MGT_C,
+                                       method = "mesophyll",
+                                       frac = combined_data$frac)
+
+
+```
+
+Here I prepare the data for visualization. Specifically,the data_long dataset will have the columns Year, Ca, d13C.atm, Variable, and Value. The Variable column will contain the names of the original selected columns (d13C_wood, iWUE_simple, iWUE_photorespiration, iWUE_mesophyll), and the Value column will contain the corresponding values.
+
+```{r e, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+data_long <- combined_data %>%
+  select(Year, d13C_wood, iWUE_simple, iWUE_photorespiration, iWUE_mesophyll, Ca, d13C.atm) %>%
+  pivot_longer(cols = c(d13C_wood, iWUE_simple, iWUE_photorespiration, iWUE_mesophyll),
+               names_to = "Variable",
+               values_to = "Value")
+
+```
+
+Now I create a new dataset called data_subset by performing the following steps: Selecting columns from the combined_data dataset & remove missing values.
+
+```{r f, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+data_subset <- combined_data %>% 
+  select(Year, wood.d13C, MGT_C, Elevation_m, Ca, iWUE_mesophyll, iWUE_photorespiration, iWUE_simple) %>%
+  na.omit()
+
+```
+
+### Linear regression models
+
+Here I create the four linear regression models.
+
+```{r g, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+m1 <- lm(d13C.atm ~ Ca, data = CO2data) # Atmospheric CO2 concentration (ppm) & 13C sequestration
+m1sum <- summary(m1)  
+
+m2 <- lm(wood.d13C ~ iWUE_mesophyll + iWUE_photorespiration + iWUE_simple, data = data_subset) # 13C concentration & Intrinsic Water Use Effeciency
+m2sum <- summary(m2)
+
+m3 <- lm(Elevation_m ~ wood.d13C + iWUE_mesophyll + iWUE_photorespiration + iWUE_simple, data = data_subset) # Elevation & 13C concentration + iWUE fractions
+m3sum <- summary(m3)
+
+m4 <- lm(MGT_C ~ wood.d13C + iWUE_mesophyll + iWUE_photorespiration + iWUE_simple, data = data_subset) # Avg growth temperature & 13C concentration + iWUE fractions
+m4sum <- summary(m4)
+
+
+```
+
+### Statistical Analysis
+
+Pearson Correlation Assessment: statistical measure that quantifies the linear relationship between two continuous variables (δ13CO2 / iWUE and environmental factors). It assesses the strength and direction of the association between the variables. Note that this test is sensitive to linear relationships but may not capture nonlinear relationships as it assumes that the relationship between the variables is linear and that the data follow a bivariate normal distribution.
+
+```{r h, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+corCO2data <- cor(CO2data[,2:3], method = "pearson")
+cor_piruCO2 <- cor(data_subset[,2:8], method = "pearson")
+
+```
+
+**Outlier Tests:** Using the outlierTest function from the car package I detect outliers in the regression models. The Output is based on the studentized residuals of the model.
+
+```{r i, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+outm1 <- outlierTest(m1)
+outm2 <- outlierTest(m2)
+outm3 <- outlierTest(m3)
+outm4 <- outlierTest(m4)
+
+```
+
+**ANOVA:** Now I perform an analysis of variance (ANOVA) to compare the means of two or more groups to determine if there are significant differences between them.
+
+```{r j, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+fit1 <- aov(m1)
+fit2 <- aov(m2)
+fit3 <- aov(m3)
+fit4 <- aov(m4)
+
+```
+
+**Non-constant variance Tests:** Here I perform a NCV test on the regression models to to assess whether the assumption of constant variance (homoscedasticity) holds in the residuals of a regression model
+
+```{r k, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+ncv_m1 <- ncvTest(m1)
+
+ncv_m2 <- ncvTest(m2)
+
+ncv_m3 <- ncvTest(m3)
+
+ncv_m4 <- ncvTest(m4)
+
+```
+
+**Kruskal-Wallis test:**
+The Kruskal-Wallis test is similar to an ANOVA as it is used to comare the medians of two or more independent groups.
+
+```{r l, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+kru_m1 <- kruskal.test(d13C.atm ~ Ca, data = CO2data)
+
+kru_m2 <- kruskal.test(wood.d13C ~ iWUE_simple, data = data_subset)
+
+kru_m3 <- kruskal.test(Elevation_m ~ iWUE_simple, data = data_subset)
+
+kru_m4 <- kruskal.test(MGT_C ~ iWUE_simple, data = data_subset)
+
+```
+
+## Results & Discussion
+
+### Identifying Temporal Trends
+Using the data from Belmecheri and Lavergne (2020) I Analyze the temporal trends in atmospheric CO2 concentrations (Ca) and carbon isotope composition (d13C.atm)
+```{r m, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+ggplot(CO2data, aes(x = yr, y = Ca)) +
+  geom_line(color = "#B40F20", lwd = 1.5) +
+  theme_cowplot() +
+  labs(x = "Year", y = "Atmospheric CO2 (ppm)") +
+  theme(axis.title = element_text(size = 10, face = "bold"),
+        axis.text = element_text(size = 8),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "none") +
+  scale_x_continuous(breaks = c(1940, 1960, 1980, 2000, 2020),
+                     labels = c("1940", "1960", "1980", "2000", "2020"),
+                     expand = c(0, 0),
+                     limits = c(1940, 2020)) +
+  theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1))
+
+```
+
+The surge in atmospheric CO2 levels has been a consistent trend since the dawn of the industrial revolution, primarily driven by human activities such as the combustion of fossil fuels and alterations in land use. The meticulous records gathered at the Mauna Loa Observatory in Hawaii portray a steadfast rise in the average yearly CO2 concentration. Back in 1958, the recorded CO2 concentration hovered around 315 parts per million (ppm). Fast forward to today, and we find ourselves at approximately 420 ppm—a noteworthy shift. This escalation bears significance because, as atmospheric CO2 levels climb, the δ13C values tend to diminish. This stems from plants displaying a preference for the lighter 12C isotope during the process of photosynthesis. With an increased uptake of atmospheric CO2, the proportion of 12C in the atmosphere dwindles, consequently ushering in lower δ13C values. Thus, the uptick in atmospheric CO2 concentrations can instigate a corresponding dip in the δ13C values found in plant tissues.
+
+```{r n, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+ggplot(CO2data, aes(x = yr, y = d13C.atm)) +
+  geom_line(color = "#003300", size = 1.5) +
+  theme_cowplot() +
+  labs(x = "Year", y = "Carbon Isotope Composition") +
+  theme(axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "none") +
+  scale_x_continuous(breaks = c(1940, 1960, 1980, 2000, 2020),
+                     labels = c("1940", "1960", "1980", "2000", "2020"),
+                     expand = c(0, 0),
+                     limits = c(1940, 2020)) +
+  theme(axis.text.x = element_text(angle = 0, vjust = 0.5, hjust = 1))
+
+```
+
+As anticipated, there have indeed been discernible shifts in δ13C over the course of the last eight decades. This trajectory of δ13C values serves as an indicator of a heightened ratio of carbon sourced from atmospheric CO2 within plant tissues. This alteration can potentially exert influences on diverse facets of plant existence, including growth patterns, the assimilation of nutrients, and the efficiency with which water is utilized.
+
+
+```{r o, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+ggplot(piru13C, aes(x = Year, y = wood.d13C)) +
+  geom_line(color = "#003300") +
+  theme_cowplot() +
+  labs(x = "Year", y = "δ13CO2") +
+  theme(axis.title = element_text(size = 12, face = "bold"),
+        axis.text = element_text(size = 10),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        legend.title = element_blank(),
+        legend.position = "none",
+        axis.text.x = element_text(angle = 45, vjust = 0.5, hjust = 1)) +
+  scale_x_continuous(breaks = c(1940, 1960, 1980, 2000, 2020),
+                     labels = c("1940", "1960", "1980", "2000", "2020"),
+                     expand = c(0, 0),
+                     limits = c(1940, 2020))
+
+```
+
+The atmospheric carbon isotope (δ13C) ratio over the span of the past eight decades reveals a distinctive zig-zag pattern, which effectively illustrates the inherent seasonal fluctuations in atmospheric δ13C.
+
+```{r p, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+data_subset %>%
+  gt() %>%
+  tab_header(title = "Water Use Effeciency of δ13CO2 Plants") %>%
+  cols_label(Year = "Year", wood.d13C = "δ13CO2 Wood", MGT_C = "Temperature (C)", Elevation_m = "Elevation (m)", Ca = "Atmosphere CO2 (ppm)", 
+             iWUE_mesophyll = "WUE Mesophyll", iWUE_photorespiration = "WUE Photorespiration", iWUE_simple = "WUE Simple (No Frac)") %>%
+  tab_spanner(label = "Calculated WUE Fraction", columns = c("iWUE_mesophyll", "iWUE_photorespiration", "iWUE_simple")) %>%
+  tab_source_note(source_note = "Data Altered From Mathias & Thomas 2018; Belmecheri & Lavergne 2020") %>%
+  tab_style(style = list(cell_text(align="center", weight="bold")),locations=cells_column_labels()) %>%
+  tab_style(style = list(cell_text(align="center", weight="bold", color="#02401B")),locations = cells_title())%>%
+  tab_style(style = list(cell_text(align="center", style="italic", color="#02401B")),locations = cells_column_spanners()) %>%
+  tab_style(style = list(cell_text(align="center")), locations = cells_body()) %>%
+  tab_options(table_body.hlines.color="#02401B", table.border.top.color="#0C1707", table.border.bottom.color = "#02401B",
+              table_body.border.bottom.color =  "#0C1707",
+              heading.border.bottom.color = "#0C1707",
+              column_labels.border.top.color = "#02401B",
+              column_labels.border.bottom.color = "#02401B",)
+     
+```
+
+### CR Plots
+
+The CR plots provided here serve as illustrative representations of diagnostic plots utilized to evaluate the linearity assumption within linear regression models. These plots showcase the alignment of the fitted values (component) along the x-axis and the standardized residuals (residual) plotted along the y-axis.
+
+```{r q, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+crPlots(m1)
+     
+```
+
+```{r r, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+crPlots(m3)
+
+```
+
+```{r s, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+crPlots(m4)
+
+```
+
+```{r t, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+ggplot(data_long, aes(x = Year, y = Value, color = Variable)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(aes(group = Variable), color = "#000000") +
+  theme_bw() +
+  labs(x = "Year", y = "iWUE") +
+  scale_x_continuous(breaks = seq(1940, 2020, 10), limits = c(1940, 2020)) +
+  scale_color_tableau() +
+  facet_wrap(~Variable, scales = "free_y") +
+  theme(legend.position = "bottom")
+     
+```
+
+```{r u, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+print(m1sum)
+print(m2sum)
+print(m3sum)
+print(m4sum)
+     
+```
+
+**Summary of Model 1:**
+The analysis of Model 1 has revealed a highly significant correlation between atmospheric δ13C and atmospheric CO2 concentration (Ca) (p < 2.2e-16). The model effectively explains the variations in atmospheric δ13C, as evidenced by the adjusted R-squared value of 0.9775, indicating that approximately 97.75% of the fluctuation in atmospheric δ13C can be attributed to Ca concentration.
+
+The estimated coefficient for Ca is -0.01789, with a standard error of 6.031e-05. This negative coefficient signifies that an elevation in Ca concentration corresponds to a decrease in atmospheric δ13C. Although the effect size is relatively modest, it remains statistically significant. The intercept term (-1.419) denotes the projected atmospheric δ13C when Ca concentration is zero.
+
+The residuals of the model adhere to a normal distribution, as suggested by their descriptive statistics. The residual standard error of 0.04166 denotes the average magnitude of the discrepancies between observed and projected atmospheric δ13C values.
+
+These outcomes are in line with previous research (Mathias et al., 2018; Adams et al., 2020; Guerrieria et al., 2020; Lavergne et al., 2022) that have corroborated a negative correlation between atmospheric CO2 concentration and carbon isotopes. The decline in atmospheric δ13C as Ca concentration increases can be attributed to plants' propensity to favor 12C during photosynthesis. This selectivity leads to a reduction in the relative abundance of 13C within atmospheric CO2.
+
+**Summary of Model 2:**
+The outcomes of the multiple linear regression analysis for wood δ13C data showcase significant results (p < 2.2e-16), implying a robust connection between wood δ13C and predictor variables: iWUE_mesophyll, iWUE_photorespiration, and iWUE_simple. The model boasts an adjusted R-squared value of 0.9932, indicating that approximately 99.32% of the variance in wood δ13C can be illuminated through the linear amalgamation of these variables.
+
+The coefficient estimates for the predictor variables are as follows: iWUE_mesophyll (-3.12192), iWUE_photorespiration (1.59197), and iWUE_simple (0.09703). All coefficients are statistically significant (p < 0.001), signifying the profound impact of these variables on wood δ13C.
+
+The intercept term (-17.54772) depicts the estimated wood δ13C when all predictor variables are zero. The negative coefficient for iWUE_mesophyll suggests that heightened mesophyll intrinsic water use efficiency corresponds to lower wood δ13C. Conversely, the positive coefficient for iWUE_photorespiration signifies that enhanced photorespiration intrinsic water use efficiency is linked to higher wood δ13C. Similarly, the positive coefficient for iWUE_simple indicates that greater simple intrinsic water use efficiency corresponds to higher wood δ13C.
+
+The residual distribution adheres to normality, as demonstrated by descriptive statistics. The residual standard error of 0.07539 denotes the average magnitude of disparities between observed and projected wood δ13C values.
+
+The high R-squared value underscores the model's efficacy in explaining data variability, while the significant coefficients underscore the pivotal role of water use efficiency in shaping wood carbon isotopes. The negative correlation between iWUE_mesophyll and wood δ13C suggests that plants with heightened water use efficiency exhibit lower wood δ13C values, reflecting their 13C discrimination during photosynthesis. Conversely, the positive correlation between iWUE_photorespiration and wood δ13C implies that plants with enhanced photorespiration intrinsic water use efficiency tend to have higher wood δ13C values, potentially due to increased carbon loss during photorespiration.
+
+**Summary of Model 3:**
+The multiple linear regression analysis applied to Elevation_m data unveils statistically significant results (p < 2.2e-16), underscoring the substantial connection between elevation and predictor variables: wood.d13C, iWUE_mesophyll, and iWUE_photorespiration. The adjusted R-squared value of 0.5059 indicates that around 50.59% of elevation variance can be attributed to these variables' linear combination.
+
+The coefficient estimates for the predictor variables are: wood.d13C (333.3020), iWUE_mesophyll (884.0872), and iWUE_photorespiration (-481.3544). All coefficients, excluding iWUE_simple, are statistically significant (p < 0.05), signifying their influence on elevation. The positive coefficient for wood.d13C implies that increased wood δ13C corresponds to higher elevation, potentially due to elevation-related environmental factors affecting wood carbon isotopes. Moreover, the positive coefficient for iWUE_mesophyll indicates that higher mesophyll intrinsic water use efficiency correlates with elevated elevations. Conversely, the negative coefficient for iWUE_photorespiration suggests that heightened photorespiration intrinsic water use efficiency is tied to lower elevations.
+
+The residuals conform to normal distribution, as indicated by descriptive statistics. The residual standard error of 53.45 quantifies the average magnitude of discrepancies between observed and projected elevation values.
+
+The moderate R-squared value highlights the model's capability to elucidate a considerable portion of elevation variation, with space for additional unanalyzed factors. The significant coefficients underscore wood δ13C, mesophyll intrinsic water use efficiency, and photorespiration intrinsic water use efficiency as contributors to elevation variance. These findings intimate that physiological processes and carbon isotopic discrimination may intertwine with elevational gradients.
+
+**Summary of Model 4:**
+The multiple linear regression analysis conducted on MGT_C data yields highly significant results (p < 2.2e-16), indicating a robust relationship between MGT_C and predictor variables: wood.d13C, iWUE_mesophyll, iWUE_photorespiration, and iWUE_simple.
+
+The coefficient estimates for the predictor variables are as follows: wood.d13C (-0.004443), iWUE_mesophyll (1.406583), iWUE_photorespiration (-2.722274), and iWUE_simple (1.797626). All coefficients, excluding wood.d13C, are statistically significant (p < 0.05), emphasizing MGT_C's impact on iWUE_mesophyll, iWUE_photorespiration, and iWUE_simple.
+
+The positive coefficients for iWUE_mesophyll and iWUE_simple underscore their correlation with higher MGT_C values. Conversely, the negative coefficient for iWUE_photorespiration suggests an inverse relationship between photorespiration intrinsic water use efficiency and MGT_C values.
+
+The residuals adhere to normality, as indicated by descriptive statistics. The residual standard error of 0.01315 captures the average magnitude of differences between observed and projected MGT_C values.
+
+The high R-squared value signals the model's adeptness at explaining a substantial portion of MGT_C variation, highlighting its relationship with predictor variables. The significant coefficients emphasize MGT_C's role in shaping physiological plant processes.
+
+These insights collectively underscore the intricate connections between atmospheric δ13C, wood δ13C, elevation, mean growth temperature (MGT_C), and water use efficiency variables. The models offer a comprehensive perspective on these interrelationships and their ecological implications. Further investigation is warranted to delve into underlying mechanisms and additional contributing factors.
+
+```{r v, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+print(corCO2data)
+print(cor_piruCO2)
+
+     
+```
+
+**CO2 Data Correlation Summary:**
+The correlation matrix for the CO2 data variables underscores a robust negative correlation (-0.9887) between atmospheric carbon dioxide concentration (Ca) and carbon isotope ratio (d13C.atm). This observation implies that as Ca levels increase, the d13C.isotope ratio diminishes. The correlation coefficient of -0.9887 underscores the powerful linear connection between these variables, signifying that fluctuations in atmospheric CO2 are intimately linked to changes in carbon isotopes. This alignment conforms to the established understanding that the combustion of fossil fuels, releasing carbon dioxide into the atmosphere, results in a lowered d13C.isotope ratio due to the isotopic constitution of fossil fuels.
+
+**piruCO2 Data Correlation Summary:**
+*The correlation matrix for the piruCO2 variables uncovers the subsequent correlations:*
+
+1. A positive correlation between wood.d13C and Elevation_m (0.6499) implies that as elevation escalates, the wood carbon isotope ratio tends to ascend.
+2. A positive correlation between wood.d13C and Ca (0.0224) suggests a feeble connection between the wood carbon isotope ratio and atmospheric carbon dioxide concentration.
+3. Positive correlations between wood.d13C and intrinsic water-use efficiency measures, iWUE_mesophyll, iWUE_photorespiration, and iWUE_simple (0.6132, 0.6355, and 0.6398 respectively) convey that as the wood carbon isotope ratio increases, the intrinsic water-use efficiency measures also exhibit a tendency to rise.
+4. A negative correlation between MGT_C and wood.d13C (-0.192) indicates a subtle inverse relationship between the carbon isotope ratio and the mean growth temperature of the trees.
+
+The remaining correlations among the variables are notably strong and positive, underlining a high degree of linkage. These correlations include MGT_C and Ca (0.1413), Elevation_m and intrinsic water-use efficiency measures, iWUE_mesophyll, iWUE_photorespiration, and iWUE_simple (0.3667, 0.3808, and 0.3864 respectively), and Ca and intrinsic water-use efficiency measures, iWUE_mesophyll, iWUE_photorespiration, and iWUE_simple (0.8016, 0.7842, and 0.7810 respectively). These observations imply that these variables are positively associated and have a tendency to increase in tandem.
+
+In essence, the correlation matrix affords insights into the interconnections among the variables within the piruCO2 dataset. It reveals the strength and direction of the relationships between them, furnishing a comprehensive perspective on their associations.
+
+```{r w, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+print(outm1)
+print(outm2)
+print(outm3)
+print(outm4)
+     
+```
+
+**Model 1 Outlier Test Interpretation:**
+From the provided output, it's evident that the studentized residuals for the years 2022, 2023, and 2021 stand out significantly from zero, indicating the potential presence of outliers. The unadjusted p-values and Bonferroni-adjusted p-values are available for each year, allowing for further analysis and decision-making on how to handle these potential outliers in the analysis.
+
+**Model 2 Outlier Test Interpretation:**
+In Model 2, a specific observation with index number 2162 exhibits a studentized residual that significantly differs from zero, suggesting a potential outlier. The unadjusted p-value and Bonferroni-adjusted p-value are provided for this particular observation, offering insights into how to approach this potential outlier in the analysis.
+
+**Model 3 Outlier Test Interpretation:**
+For Model 3, the unadjusted p-value associated with a residual is 0.013015, indicating a relatively moderate level of statistical significance. The Bonferroni-adjusted p-value is marked as NA, possibly due to the lack of other prominent outliers in the model.
+
+Overall Interpretation of Outlier Tests for Model 3:
+The absence of significant outliers in Model 3 implies that the data points conform reasonably well to the assumptions of the linear regression model.
+
+Model 4 Outlier Test Interpretation:
+In Model 4, certain observations, specifically those from the years 2024, 2023, and 2022, display substantial studentized residuals coupled with low unadjusted p-values. This suggests that these observations deviate significantly from the anticipated values as predicted by the regression model. The Bonferroni-adjusted p-values for these observations also being very small indicate strong statistical evidence against the null hypothesis of no outlier effect.
+
+Overall Interpretation of Outlier Tests for Model 4:
+The outcomes imply that observations from 2024, 2023, and 2022 might be influential outliers, wielding notable influence over the predictive capabilities of the regression model for MGT_C.
+
+In summary, these outlier test results furnish valuable information for evaluating the impact of potential outliers on the regression models. They aid in making informed decisions about whether to retain, adjust, or exclude these outliers in the subsequent analyses.
+
+```{r x, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+print(fit1)
+print(fit2)
+print(fit3)
+print(fit4)
+     
+```
+
+**Model 1 ANOVA Results Interpretation:**
+The ANOVA table provides essential information about the distribution of sum of squares and degrees of freedom among the terms in Model 1. Specifically, the term "Ca" (atmospheric CO2 concentration) has a sum of squares of 152.75146 with one degree of freedom. The remaining sum of squares (3.50743) and degrees of freedom (2021) are allocated to the residuals, which signify the unexplained variability in the model. The residual standard error, offering an estimate of the standard deviation of residuals, is also presented. The note "Estimated effects may be unbalanced" indicates that the distribution of the atmospheric CO2 variable may not be even or uniform. This observation applies to the other models as well.
+
+**Model 2 ANOVA Results Interpretation:**
+In Model 2, the ANOVA results show the sum of squares for the three Water Use Efficiency fractions: 69.49156, 113.80254, and 0.25335, each with one degree of freedom. The remaining sum of squares (1.24464) and degrees of freedom (219) correspond to the residuals. These figures provide insights into the proportion of variability attributed to each predictor variable and the residuals.
+
+**Model 3 ANOVA Results Interpretation:**
+For Model 3, the ANOVA outcomes exhibit the sum of squares for the four Water Use Efficiency fractions: 542150.7, 2089.6, 116524.0, and 2.3, each with one degree of freedom. The remaining sum of squares (622825.1) and degrees of freedom (218) are attributed to the residuals. These statistics provide a breakdown of the variability apportioned to each predictor term and the residuals in the model.
+
+**Model 4 ANOVA Results Interpretation:**
+Model 4's ANOVA results showcase the sum of squares for the four Water Use Efficiency fractions: 3.46150, 1.28552, 16.83339, and 72.24427, respectively. Each term is associated with one degree of freedom. The residual sum of squares (0.03771) and degrees of freedom (218) account for the variability that remains unexplained by the model. These values grant insight into the relative contributions of each predictor variable and the residuals in the model's overall variability.
+
+In summary, the ANOVA results help dissect the distribution of variability within each regression model by breaking it down into the effects of predictor terms and residuals. These statistics facilitate understanding the significance and impact of each variable within the model.
+
+```{r y, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+print(ncv_m1)
+print(ncv_m2)
+print(ncv_m3)
+print(ncv_m4)
+
+     
+```
+**Model 1 NCV Results Interpretation:**
+For Model 1, the Non-Constant Variance (NCV) test indicates that the chi-square value is 777.4753 with 1 degree of freedom. The p-value, which is < 2.22e-16, suggests strong evidence against the assumption of constant variance. This implies that the variability of residuals is not consistent across all levels of the predictor variable. The non-constant variance can impact the reliability of the regression model's predictions.
+
+**Model 2 NCV Results Interpretation:**
+In Model 2, the NCV test yields a chi-square value of 45.17054 with 1 degree of freedom. The p-value of 1.806e-11 indicates strong evidence against the assumption of constant variance. Like in Model 1, this suggests that the variability of residuals is not uniform across different levels of the predictor variable.
+
+**Model 3 NCV Results Interpretation:**
+For Model 3, the NCV test produces a chi-square value of 1.562031 with 1 degree of freedom. The p-value of 0.21137 indicates weak evidence against the assumption of constant variance. This suggests that the assumption of constant variance may hold reasonably well for Model 3, as the evidence against it is not strong.
+
+**Model 4 NCV Results Interpretation:**
+In Model 4, the NCV test results in a chi-square value of 48.59042 with 1 degree of freedom. The p-value of 3.1541e-12 suggests strong evidence against the assumption of constant variance. This is similar to the findings in Models 1 and 2, indicating that the variability of residuals is not constant across different levels of the predictor variable.
+
+Across all models, the non-constant variance test does not support the assumption of constant variance. This suggests that the variability of residuals changes as the predictor variables change. This violation of the assumption can lead to biased or inefficient parameter estimates and unreliable hypothesis tests. To account for the heteroscedasticity (non-constant variance) in the residuals, it may be advisable to explore alternative modeling approaches that can handle such conditions. Additionally, enhancing the models by incorporating different calculations and arguments could potentially yield improved results, considering the complexity of the relationships being investigated.
+```{r z, echo=TRUE, comment="", collapse=TRUE, warning=FALSE}
+
+print(kru_m1)
+print(kru_m2)
+print(kru_m3)
+print(kru_m4)
+
+```
+
+**Model 1 Kruskal Test Results Interpretation:**
+In Model 1, the Kruskal-Wallis test statistic is 1476.9, with 754 degrees of freedom. The p-value reported as "< 2.2e-16" indicates strong evidence against the null hypothesis of no difference in the medians. This suggests that there are significant differences in the medians of δ13C among the different levels of total atmospheric CO2 concentrations (Ca). Therefore, it can be concluded that the variable Ca has a statistically significant effect on the atmospheric carbon isotope composition (δ13C). Further investigations, such as post-hoc tests or pairwise comparisons, could help identify which specific groups have different median δ13C values.
+
+**Model 2-4 Kruskal Test Results Interpretation:**
+For the remaining models (Models 2 to 4), the Kruskal-Wallis test results indicate that there is not sufficient evidence to conclude that there are significant differences in the medians of δ13C for the predictor variables being analyzed. This suggests that the variables related to iWUE fractions and environmental factors (such as Temperature and Elevation) may not have a statistically significant effect on δ13C values.
+
+Overall, the Kruskal-Wallis test is a non-parametric method used to compare medians across different groups or levels of a categorical variable. In Model 1, the test results provide evidence that Ca significantly influences δ13C, while for Models 2 to 4, there isn't enough evidence to support significant differences in δ13C related to the examined predictor variables. This insight can help guide further analysis and understanding of the relationships between these variables and δ13C in the context of the specific research or study.
+
+## Discussion & Conclusion
+
+Throughout this study I sought to investigate the temporal trends in atmospheric carbon dioxide (CO2) concentrations (Ca) and carbon isotope composition (δ13C.atm) over the past 80 years, as well as the relationship between δ13C composition of woody organic matter and environmental factors. The analysis utilized data from Belmecheri and Lavergne (2020) and Mathias & Thomas (2021) and employed statistical modeling techniques to explore the dynamics and implications of these variables.
+
+Our analysis revealed a consistent and significant increase in atmospheric CO2 concentrations over time, in line with previous studies. Since the industrial revolution, the average annual CO2 concentration has been steadily rising, reaching approximately 420 parts per million (ppm) in recent years. This upward trend in CO2 levels has important implications for δ13C values, as the preferential uptake of the lighter carbon isotope, 12C, by plants during photosynthesis results in lower δ13C values in response to increased CO2 concentrations.
+
+The analysis of δ13C values over the study period confirmed the expected changes, demonstrating an increased proportion of carbon derived from atmospheric CO2 in plant tissues. This finding has potential implications for plant growth, nutrient uptake, and water-use efficiency, as it suggests altered carbon assimilation pathways and isotope discrimination patterns under elevated CO2 levels.
+
+Moreover, our investigation into the relationship between δ13C composition of woody organic matter and environmental factors yielded valuable insights. The analysis revealed a highly significant negative relationship between atmospheric δ13C and Ca concentration. The negative coefficient for Ca suggests that as atmospheric CO2 concentrations increase, there is a corresponding decrease in δ13C values. This finding aligns with the principle of isotopic discrimination, as plants exhibit a higher affinity for 12C when CO2 availability is higher, leading to a decline in the relative abundance of 13C in atmospheric CO2.
+
+Furthermore, the multiple linear regression analysis identified significant relationships between wood δ13C and water use efficiency (WUE) fractions, namely iWUE_mesophyll, iWUE_photorespiration, and iWUE_simple. The negative coefficient for iWUE_mesophyll indicates that higher mesophyll intrinsic water use efficiency is associated with lower wood δ13C values, reflecting the ability of plants to discriminate against 13C during photosynthesis. Conversely, the positive coefficient for iWUE_photorespiration suggests that higher photorespiration intrinsic water use efficiency is associated with higher wood δ13C values, likely due to increased carbon loss during photorespiration. The positive coefficient for iWUE_simple also indicates an increase in wood δ13C with increased simple intrinsic water use efficiency.
+
+In summary, this study provides compelling evidence of the temporal trends in atmospheric CO2 concentrations and carbon isotope composition over the past 80 years. The findings underscore the impact of human activities on the increasing atmospheric CO2 levels and its consequent influence on the carbon isotope ratios in plant tissues. The negative relationship between atmospheric δ13C and CO2 concentrations highlights the role of isotopic discrimination in carbon assimilation processes. Additionally, the relationships between wood δ13C and WUE fractions highlight the intricate connections between plant physiological processes and carbon isotopic composition.
+
+These findings contribute to our understanding of the changing dynamics of atmospheric CO2 and carbon isotope composition and provide valuable insights into the interactions between environmental factors and plant carbon assimilation. This knowledge is crucial for accurately predicting the responses of ecosystems to ongoing climate change and improving our ability to mitigate its impacts. Future research should continue to explore the complex relationships between atmospheric CO2, δ13C values, and environmental factors to further refine our understanding of these intricate processes and their implications for global carbon cycling.
+
+## References
+
+[Adams, M. A., Buckley, T. N., & Turnbull, T. L. (2020). *Diminishing CO2-driven gains in water-use efficiency of global forests.* Nature Climate Change, 10, 466–471.](https://www.researchgate.net/publication/340954050_Diminishing_CO2-driven_gains_in_water-use_efficiency_of_global_forests)
+
+
+[Guerrieri, R., Vanguelova, E., Pitman, R., Benham, S., Perks, M., Morison, J. I. L., & Mencuccini, M. (2020). *Climate and atmospheric deposition effects on forest water-use efficiency and nitrogen availability across Britain.* Scientific Reports, 10, 12418.](https://www.researchgate.net/publication/343188605_Climate_and_atmospheric_deposition_effects_on_forest_water-use_efficiency_and_nitrogen_availability_across_Britain)
+
+[Lavergne, A., Hemming, D., Prentice, I. C., Guerrieri, R., Oliver, R. J., & Graven, H. (2022). *Global decadal variability of plant carbon isotope discrimination and its link to gross primary production.* Global Change Biology, 28, 524–541](https://onlinelibrary.wiley.com/doi/full/10.1111/gcb.15924)
+
+[Mathias, J. M., & Hudiburg, T. W. (2022). *isocalcR: An R package to streamline and standardize stable isotope calculations in ecological research.* Global Change Biology, 28(24), 7428–7436. Online resource](https://onlinelibrary.wiley.com/doi/full/10.1111/gcb.16407)
+
+[Mathias, J. M., & Hudiburg, T. W. (2022). isocalcR code and data. Figshare. Online resource are.20522 229.v1](https://figshare.com/articles/online_resource/isocalcR_code_and_data/20522229)
+
+[Mathias, J. M., & Thomas, R. B. (2021). *Global tree intrinsic water use efficiency is enhanced by increased atmospheric CO2 and modulated by climate and plant functional types.* Proceedings of the National Academy of Sciences of the United States of America, 118, e2014286118.](https://www.researchgate.net/publication/349147987_Global_tree_intrinsic_water_use_efficiency_is_enhanced_by_increased_atmospheric_CO_2_and_modulated_by_climate_and_plant_functional_types)

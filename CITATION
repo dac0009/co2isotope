@@ -1,0 +1,14 @@
+
+bibentry(bibtype = "Article",
+         title = "isocalcR: An R package to streamline and standardize stable isotope calculations in ecological research",
+         journal = "Global Change Biology",
+         year = "2022",
+         volume = "28",
+         number = "24",
+         pages = "7428-7436",
+         doi = "10.1111/gcb.16407",
+         author = c(person(family="Mathias", given="Justin"),
+  person(family="Hudiburg", given="Tara")),
+         url = "https://onlinelibrary.wiley.com/doi/abs/10.1111/gcb.16407")
+
+citation(auto = meta)
